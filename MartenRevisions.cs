@@ -71,4 +71,21 @@ internal class MartenSampleRepository
             throw new Exception(message);
         }
     }
+
+    public async Task UpdateWithStoreAsync(DbEntity dbEntity, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await using var session = this.store.LightweightSession();
+            session.Store(dbEntity);
+            await session.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception)
+        {
+            var id = dbEntity.Id.ToString();
+            var message = $"The record with Id {id} has already been updated by another user.";
+
+            throw new Exception(message);
+        }
+    }
 }

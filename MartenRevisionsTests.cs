@@ -7,7 +7,7 @@ using Npgsql;
 using Respawn;
 
 [TestClass]
-public class MartenDbTests
+public class MartenRevisionsTests
 {
     private const string CONNECTION_STRING = "Server=localhost;Port=5432;Database=martendocrevisions;User Id=postgres;Password=postgres;";
     private readonly CancellationToken cancellationToken = CancellationToken.None;
@@ -17,7 +17,7 @@ public class MartenDbTests
     private Respawner? respawner;
     private DocumentStore store;
 
-    public MartenDbTests()
+    public MartenRevisionsTests()
     {
         this.options = new MartenDbOptions
         {
@@ -179,4 +179,106 @@ public class MartenDbTests
             .BeGreaterThan(savedEntity.Version)
             ;
     }
+
+    [TestMethod]
+    public async Task UpdateWithStoreAsync_Should_Update_Record_When_Version_In_Database_Equal()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        var anyText = "Any text";
+        var entity = new DbEntity(id, anyText);
+
+        await this.repository.AddAsync(entity, cancellationToken);
+
+        var updatedEntity = await this.repository.GetAsync(id, cancellationToken);
+
+        updatedEntity.AnyText = anyText + " updated";
+        // Act
+        await this.repository.UpdateWithStoreAsync(updatedEntity, this.cancellationToken);
+
+        // Assert
+        var readEntity = await this.repository.GetAsync(id, this.cancellationToken);
+
+        readEntity.Should()
+            .NotBeNull()
+            ;
+
+        readEntity!.Id.Should()
+            .Be(id)
+            ;
+
+        readEntity.AnyText.Should()
+            .Be(updatedEntity.AnyText)
+            ;
+
+        readEntity.Version.Should()
+            .Be(updatedEntity.Version)
+            ;
+    }
+
+    [TestMethod]
+    public async Task UpdateWithStoreAsync_Should_Throw_Exception_When_Version_In_Database_Higher()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        var anyText = "Any text";
+        var entity = new DbEntity(id, anyText);
+
+        await this.repository.AddAsync(entity, cancellationToken);
+
+        var updatedEntity = await this.repository.GetAsync(id, cancellationToken);
+
+        var updatedText = anyText + " updated";
+        updatedEntity.AnyText = updatedText;
+        var outdatedVersion = updatedEntity!.Version;
+
+        await this.repository.UpdateWithStoreAsync(updatedEntity, this.cancellationToken);
+
+        var updatedOutdatedText = updatedText + " outdated";
+
+        var outdatedEntity = new DbEntity(id, updatedOutdatedText, outdatedVersion);
+
+        // Act
+        var action = async () => await this.repository.UpdateWithStoreAsync(outdatedEntity, this.cancellationToken);
+
+        // Assert
+        var expectedMessage = $"The record with Id {id} has already been updated by another user.";
+
+        await action.Should()
+            .ThrowAsync<Exception>()
+            .WithMessage(expectedMessage);
+    }
+
+    [TestMethod]
+    public async Task UpdateWithStoreAsync_Should_Not_Throw_Exception_When_Version_In_Database_Higher()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        var anyText = "Any text";
+        var entity = new DbEntity(id, anyText);
+
+        await this.repository.AddAsync(entity, cancellationToken);
+
+        var updatedEntity = await this.repository.GetAsync(id, cancellationToken);
+
+        var updatedText = anyText + " updated";
+        updatedEntity.AnyText = updatedText;
+        var outdatedVersion = updatedEntity!.Version;
+
+        await this.repository.UpdateWithStoreAsync(updatedEntity, this.cancellationToken);
+
+        var updatedOutdatedText = updatedText + " outdated";
+
+        var outdatedEntity = new DbEntity(id, updatedOutdatedText, outdatedVersion);
+
+        // Act
+        await this.repository.UpdateWithStoreAsync(outdatedEntity, this.cancellationToken);
+
+        // Assert
+
+        var docRead = await this.repository.GetAsync(id, this.cancellationToken);
+
+
+    }
+
 }
